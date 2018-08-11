@@ -18,7 +18,7 @@ REPLACE_ITER_C = 1000
 MEMORY_CAPACITY = 5000
 BATCH_SIZE = 16
 VAR_MIN = 0.1
-RENDER = True
+RENDER = False
 LOAD = False
 
 env = Env()
@@ -171,6 +171,7 @@ class Memory(object):
     
 sess = tf.Session()
 sess.__enter__()
+
 actor = Actor(sess, ACTION_DIM, ACTION_BOUND[1], LR_A, REPLACE_ITER_A)
 critic = Critic(sess, STATE_DIM, ACTION_DIM, LR_C, GAMMA, REPLACE_ITER_C, actor.a, actor.a_)
 actor.add_grad_to_graph(critic.a_grads)
@@ -189,10 +190,10 @@ def train():
     var = 0.05  # control exploration
     last_epoch = 0
     
-#     if os.path.isdir(path): shutil.rmtree(path)
-#     os.mkdir(path)
-    
+    writer = tf.summary.FileWriter("./logs/", sess.graph)
+    index = 0
     while True:
+        index += 1
         epoch, s = env.reset()
         if epoch > MAX_EPISODES:
             break
@@ -225,17 +226,30 @@ def train():
             
             if t == MAX_EP_STEPS-1 or done:
                 result = '| done' if done else '| ----'
-                sys.stdout.write('\r' + 'Ep:'+ str(epoch) + 
+                sys.stdout.write('\r' + 'Epoch:'+ str(epoch) +
+                      ' (%d/%d)' % (index, len(env.random_index)) +
                       result +
                       '| R: %i' % int(ep_reward) +
-                      '| Explore: %.2f' % var +
                       '| IOU: %.2f' % iou
                       )
                 break
         if RENDER:
             env.render()
         
+        summary = tf.Summary()
+        reward_value = summary.value.add()
+        reward_value.simple_value = ep_reward
+        reward_value.tag = 'reward'
+        iou_value = summary.value.add()
+        iou_value.simple_value = iou
+        iou_value.tag = 'iou'
+        step_value = summary.value.add()
+        step_value.simple_value = t
+        step_value.tag = 'step'
+        writer.add_summary(summary, len(env.random_index)*epoch + index)
+        
         if epoch != last_epoch:
+            index = 0
             last_epoch = epoch
             ckpt_path = os.path.join(path, 'DDPG_epoch_%d.ckpt' % epoch)
             save_path = saver.save(sess, ckpt_path, write_meta_graph=False)

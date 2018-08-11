@@ -29,8 +29,8 @@ class Env(object):
         with open('data/pid_map_image_update.txt', 'rb') as f:
             u = pickle._Unpickler(f)
             u.encoding = 'latin1'
-            self.data = u.load()
-        self.random_index = np.arange(len(self.data))
+            self._data = u.load()
+        self.random_index = np.arange(len(self._data))
         np.random.shuffle(self.random_index)
         self.now_index = 0
         self._epoch = 0
@@ -43,36 +43,36 @@ class Env(object):
     
     def reset(self):
         
-        now_index = self.random_index[self.now_index]
-        if now_index >= len(self.data):
-            self.random_index = np.arange(len(self.data))
+        if self.now_index >= len(self._data):
+            self.random_index = np.arange(len(self._data))
             np.random.shuffle(self.random_index)
             self.now_index = 0
             self._epoch += 1
             
+        now_index = self.random_index[self.now_index]    
             
         if random.random() < 0.0:
             self._same = False
-            search_index = self.random_index[int(random.random()*len(self.data))]
-            while search_index == now_index or search_index >= len(self.data):
-                search_index = self.random_index[int(random.random()*len(self.data))]
+            search_index = self.random_index[int(random.random()*len(self._data))]
+            while search_index == now_index or search_index >= len(self._data):
+                search_index = self.random_index[int(random.random()*len(self_data))]
         else:
             search_index = now_index
             self._same = True
             
-        image_index = int(random.random()*len(self.data[now_index]))
-        while image_index >= len(self.data[now_index]):
-            image_index = int(random.random()*len(self.data[now_index]))
+        image_index = int(random.random()*len(self._data[now_index]))
+        while image_index >= len(self._data[now_index]):
+            image_index = int(random.random()*len(self._data[now_index]))
 
-        target_data = self.data[now_index][image_index]
+        target_data = self._data[now_index][image_index]
         target_image = np.array(Image.open(target_data['image']))
         bbox = target_data['boxes'][np.where(target_data['gt_pids']==now_index)[0][0]]
         self.target_image = target_image[bbox[1]:bbox[3],bbox[0]:bbox[2]]
 
-        image_index = int(random.random()*len(self.data[search_index]))
-        while image_index >= len(self.data[search_index]):
-            image_index = int(random.random()*len(self.data[search_index]))
-        search_data = self.data[search_index][image_index]
+        image_index = int(random.random()*len(self._data[search_index]))
+        while image_index >= len(self._data[search_index]):
+            image_index = int(random.random()*len(self._data[search_index]))
+        search_data = self._data[search_index][image_index]
         self.search_image = np.array(Image.open(search_data['image']))
     
         search_iv = get_image_vector(self.search_image, self.feature_map_extractor_model)
