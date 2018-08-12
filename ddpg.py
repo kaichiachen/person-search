@@ -8,7 +8,7 @@ from env import Env
 np.random.seed(1)
 tf.set_random_seed(1)
 
-MAX_EPISODES = 50
+MAX_EPISODES = 1000
 MAX_EP_STEPS = 10
 LR_A = 1e-4  # learning rate for actor
 LR_C = 1e-4  # learning rate for critic
@@ -57,14 +57,17 @@ class Actor(object):
         with tf.variable_scope(scope):
             init_w = tf.contrib.layers.xavier_initializer()
             init_b = tf.constant_initializer(0.001)
-            net = tf.layers.dense(s, 200, activation=tf.nn.relu6,
+            net = tf.layers.dense(s, 2048, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l1',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 200, activation=tf.nn.relu6,
+            net = tf.layers.dense(net, 512, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l2',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 10, activation=tf.nn.relu,
+            net = tf.layers.dense(net, 200, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l3',
+                                  trainable=trainable)
+            net = tf.layers.dense(net, 10, activation=tf.nn.relu,
+                                  kernel_initializer=init_w, bias_initializer=init_b, name='l4',
                                   trainable=trainable)
             with tf.variable_scope('a'):
                 actions = tf.layers.dense(net, self.a_dim, activation=tf.nn.sigmoid, kernel_initializer=init_w,
@@ -130,16 +133,19 @@ class Critic(object):
             init_b = tf.constant_initializer(0.01)
 
             with tf.variable_scope('l1'):
-                n_l1 = 200
+                n_l1 = 2048
                 w1_s = tf.get_variable('w1_s', [self.s_dim, n_l1], initializer=init_w, trainable=trainable)
                 w1_a = tf.get_variable('w1_a', [self.a_dim, n_l1], initializer=init_w, trainable=trainable)
                 b1 = tf.get_variable('b1', [1, n_l1], initializer=init_b, trainable=trainable)
                 net = tf.nn.relu6(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
-            net = tf.layers.dense(net, 200, activation=tf.nn.relu6,
+            net = tf.layers.dense(net, 512, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l2',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 10, activation=tf.nn.relu,
+            net = tf.layers.dense(net, 200, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l3',
+                                  trainable=trainable)
+            net = tf.layers.dense(net, 10, activation=tf.nn.relu,
+                                  kernel_initializer=init_w, bias_initializer=init_b, name='l4',
                                   trainable=trainable)
             with tf.variable_scope('q'):
                 q = tf.layers.dense(net, 1, kernel_initializer=init_w, bias_initializer=init_b, trainable=trainable)   # Q(s,a)
@@ -195,8 +201,8 @@ def train():
     while True:
         index += 1
         epoch, s = env.reset()
-        if epoch > MAX_EPISODES:
-            break
+#         if epoch > MAX_EPISODES:
+#             break
         ep_reward = 0
 
         for t in range(MAX_EP_STEPS):
@@ -204,7 +210,7 @@ def train():
             # Added exploration noise
             a = actor.choose_action(s)
             a = np.clip(np.random.normal(a, var), *ACTION_BOUND)    # add randomness to action selection for exploration
-            s_, r, done = env.step(a)
+            s_, r, done = env.step(a, t == (MAX_EP_STEPS-1))
             iou = s_[-1]
             
             
@@ -226,12 +232,17 @@ def train():
             
             if t == MAX_EP_STEPS-1 or done:
                 result = '| done' if done else '| ----'
-                sys.stdout.write('\r' + 'Epoch:'+ str(epoch) +
+                sys.stdout.write('\r' + 
+                      'Epoch:'+ str(epoch) +
                       ' (%d/%d)' % (index, len(env.random_index)) +
                       result +
-                      '| R: %i' % int(ep_reward) +
+                      '| Step: %i' % t +
+                      '| R: %.2f' % ep_reward +
                       '| IOU: %.2f' % iou
                       )
+                
+                if iou > 0.5:
+                    env.save()
                 break
         if RENDER:
             env.render()
@@ -251,9 +262,10 @@ def train():
         if epoch != last_epoch:
             index = 0
             last_epoch = epoch
-            ckpt_path = os.path.join(path, 'DDPG_epoch_%d.ckpt' % epoch)
-            save_path = saver.save(sess, ckpt_path, write_meta_graph=False)
-            print("\nSave Model %s\n" % save_path)
+            if epoch % 10 == 0:
+                ckpt_path = os.path.join(path, 'DDPG_epoch_%d.ckpt' % epoch)
+                save_path = saver.save(sess, ckpt_path, write_meta_graph=False)
+                print("\nSave Model %s\n" % save_path)
 
 
 def eval():

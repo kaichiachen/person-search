@@ -1,6 +1,7 @@
 data/
 output/models/*
 output/imgs/*
+output/logs/*
 logs/*
 
 # Byte-compiled / optimized / DLL files
