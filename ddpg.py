@@ -9,7 +9,7 @@ np.random.seed(1)
 tf.set_random_seed(1)
 
 MAX_EPISODES = 1000
-MAX_EP_STEPS = 10
+MAX_EP_STEPS = 5
 LR_A = 1e-4  # learning rate for actor
 LR_C = 1e-4  # learning rate for critic
 GAMMA = 0.9  # reward discount
@@ -247,6 +247,14 @@ def train():
         if RENDER:
             env.render()
         
+        if epoch != last_epoch:
+            index = 0
+            last_epoch = epoch
+            if epoch % 10 == 0:
+                ckpt_path = os.path.join(path, 'DDPG_epoch_%d.ckpt' % epoch)
+                save_path = saver.save(sess, ckpt_path, write_meta_graph=False)
+                print("\nSave Model %s\n" % save_path)
+                
         summary = tf.Summary()
         reward_value = summary.value.add()
         reward_value.simple_value = ep_reward
@@ -255,17 +263,9 @@ def train():
         iou_value.simple_value = iou
         iou_value.tag = 'iou'
         step_value = summary.value.add()
-        step_value.simple_value = t
+        step_value.simple_value = t+1
         step_value.tag = 'step'
         writer.add_summary(summary, len(env.random_index)*epoch + index)
-        
-        if epoch != last_epoch:
-            index = 0
-            last_epoch = epoch
-            if epoch % 10 == 0:
-                ckpt_path = os.path.join(path, 'DDPG_epoch_%d.ckpt' % epoch)
-                save_path = saver.save(sess, ckpt_path, write_meta_graph=False)
-                print("\nSave Model %s\n" % save_path)
 
 
 def eval():

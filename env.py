@@ -23,7 +23,7 @@ class Env(object):
     
     action_bound = [0, 1]
     action_dim = 5
-    state_dim = 8193
+    state_dim = 4097
     
     def __init__(self):
         with open('data/pid_map_image_update.txt', 'rb') as f:
@@ -108,7 +108,8 @@ class Env(object):
         height = int(self.region_image[0] * height_ratio)
         if width < 1 or height < 1:
             if self._same:
-                return self.state, -10, True
+                if final_step: return self.state, -10, True
+                else: return self.state, -10, False
             else:
                 return self.state, -1, True
         
@@ -117,10 +118,10 @@ class Env(object):
         region_mask = np.zeros([self.search_image.shape[0], self.search_image.shape[1]])
         region_mask[y:y+height,x:x+width] = 1
         iou = follow_iou(self.gt_mask, region_mask)
-        if iou > self._last_iou:
+        if iou >= self._last_iou:
             reward = -(1-iou)#iou - self._last_iou
         else:
-            reward = -(1-iou)#self._last_iou - iou
+            reward = -5*(1-iou)#self._last_iou - iou
         self.region_masks.append(region_mask)
         
         search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
@@ -131,15 +132,21 @@ class Env(object):
         self.last_x = x
         self.last_y = y
         
-        if done >= 0.5 or final_step:
+        if self._epoch < 200: thre = 0
+        else: thre = self._epoch * 0.01
+        
+        if thre > 0.5: thre = 0.5
+        if done < thre or final_step:
             if self._same:
                 if iou >= self._iou_thre:
-                    return self.state, iou - self._iou_thre, True
+                    return self.state, -(1-iou), True
                 else:
-                    return self.state, -2 * (self._iou_thre - iou), True
+                    return self.state, -5 * (1-iou), True
             else:
-                return self.state, 1, False
-        return self.state, reward, False
+                return self.state, -0.5, True
+        
+        if thre == 0: return self.state, reward, iou>=0.5
+        else: return self.state, reward, False
     
     def gen_render(self):
         with Render() as r:
@@ -162,7 +169,7 @@ class Env(object):
         image = mask_image_with_mean_background(self.gt_mask, self.search_image, [0,255,0])
         image = np.concatenate([im] + [image],axis=1)
         image = np.concatenate([image] + [mask_image_with_mean_background(region_mask, self.search_image, [255,0,0]) for region_mask in self.region_masks],axis=1)
-        pid = self.random_index[self.now_index]
+        pid = self.random_index[self.now_index-1]
         save_img('./output/imgs/%03d-%05d-%d-%.2f.jpg' % (self._epoch+1, self.now_index, pid,self._last_iou), image)
 
 if __name__ == '__main__':
