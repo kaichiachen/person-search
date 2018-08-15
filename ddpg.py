@@ -193,7 +193,7 @@ else:
     sess.run(tf.global_variables_initializer())
     
 def train():
-    var = 0.05  # control exploration
+    var = 1  # control exploration
     last_epoch = 0
     
     writer = tf.summary.FileWriter("./logs/", sess.graph)
