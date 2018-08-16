@@ -1,4 +1,5 @@
 import pickle
+from copy import copy, deepcopy
 import numpy as np
 import random
 import cv2
@@ -171,6 +172,20 @@ class Env(object):
         image = np.concatenate([image] + [mask_image_with_mean_background(region_mask, self.search_image, [255,0,0]) for region_mask in self.region_masks],axis=1)
         pid = self.random_index[self.now_index-1]
         save_img('./output/imgs/%03d-%05d-%d-%.2f.jpg' % (self._epoch+1, self.now_index, pid,self._last_iou), image)
+        
+    def __copy__(self):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        result.__dict__.update(self.__dict__)
+        return result
+    
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            setattr(result, k, deepcopy(v, memo))
+        return result
 
 if __name__ == '__main__':
     env = Env()
