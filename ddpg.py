@@ -200,7 +200,7 @@ def train():
     index = 0
     while True:
         index += 1
-        epoch, s = env.reset()
+        epoch, s = env.reset(MAX_EP_STEPS)
 #         if epoch > MAX_EPISODES:
 #             break
         ep_reward = 0
@@ -210,8 +210,7 @@ def train():
             # Added exploration noise
             a = actor.choose_action(s)
             a = np.clip(np.random.normal(a, var), *ACTION_BOUND)    # add randomness to action selection for exploration
-            s_, r, done = env.step(a, t == (MAX_EP_STEPS-1))
-            iou = s_[-1]
+            s_, r, done, iou = env.step(a, t+1)
             
             
             M.store_transition(s, a, r, s_)
