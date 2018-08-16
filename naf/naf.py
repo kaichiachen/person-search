@@ -48,7 +48,7 @@ class NAF(object):
     #  self.env.monitor.start('/tmp/%s-%s' % (self.stat.env_name, get_timestamp()))
 
     for self.idx_episode in range(self.max_episodes):
-      eps, state = self.env.reset()
+      eps, state = self.env.reset(self.max_steps)
       print('episode: ', self.idx_episode)
       for t in range(0, self.max_steps):
         #if display: self.env.render()
@@ -58,7 +58,7 @@ class NAF(object):
 
         # 2. step
         self.prestates.append(state)
-        state, reward, terminal = self.env.step(action, t==(self.max_steps-1))
+        state, reward, terminal, iou = self.env.step(action, t==(self.max_steps-1))
         self.poststates.append(state)
 
         terminal = True if t == self.max_steps - 1 else terminal
@@ -112,7 +112,7 @@ class NAF(object):
         prestates.append(observation)
         actions.append(action)
 
-        observation, reward, done = self.env.step(action)
+        observation, reward, done, iou = self.env.step(action)
         episode_reward += reward
 
         rewards.append(reward); poststates.append(observation); terminals.append(done)

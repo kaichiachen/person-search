@@ -48,14 +48,16 @@ def update_history_vector(history_vector, action):
 def get_image_vector(image, model):
     return np.array(get_conv_image_descriptor_for_image(image, model))
 
-def get_state(target_image, search_image):
+def get_state(target_image, history_state, history_action):
     #history_vector = np.reshape(history_vector, (number_of_actions*actions_of_history, 1))
     
-    state = cv2.addWeighted(target_image, 0.5, search_image, 0.5, 0)
-    state = np.reshape(state, (-1, 1))
-    #target_image = np.reshape(target_image, (-1, 1))
-    #search_image = np.reshape(search_image, (-1, 1))
-    #state = np.vstack((target_image, search_image))#, history_vector))
+    #state = cv2.addWeighted(target_image, 0.5, search_image, 0.5, 0)
+    #state = np.reshape(state, (-1, 1))
+    target_image = np.reshape(target_image, (-1, 1))
+    history_state = np.reshape(history_state, (-1, 1))
+    history_action = np.reshape(history_action, (-1, 1))
+    state = np.vstack((target_image, history_state, history_action))
+    state = np.reshape(state, (-1))
     return state
     
 

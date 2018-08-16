@@ -24,7 +24,7 @@ class Env(object):
     
     action_bound = [0, 1]
     action_dim = 5
-    state_dim = 4097
+    state_dim = 24596
     
     def __init__(self):
         with open('data/pid_map_image_update.txt', 'rb') as f:
@@ -43,7 +43,10 @@ class Env(object):
         
         self.env_render = self.gen_render()
     
-    def reset(self):
+    def reset(self, max_step):
+        self.max_step = max_step
+        self.history_action = np.zeros(4 * max_step)
+        self.history_state = np.zeros(4096 * max_step)
         
         if self.now_index >= len(self._data):
             self.random_index = np.arange(len(self._data))
@@ -79,7 +82,10 @@ class Env(object):
     
         search_iv = get_image_vector(self.search_image, self.feature_map_extractor_model)
         self.target_iv = get_image_vector(self.target_image, self.feature_map_extractor_model)
-        self.state = get_state(self.target_iv, search_iv)
+        
+        self.history_state[:4096] = search_iv
+        self.history_action[:4] = 0,0,1,1
+        self.state = get_state(self.target_iv, self.history_state, self.history_action)
         
         annotation = search_data['boxes'][np.where(search_data['gt_pids']==search_index)[0][0]]#.astype(np.int32)
         self.gt_mask = generate_bounding_box_from_annotation(annotation, self.search_image.shape)
@@ -94,14 +100,14 @@ class Env(object):
         self.last_x, self.last_y = 0, 0
         self.region_image = (self.search_image.shape[0], self.search_image.shape[1])
         self.region_masks = []
-        self.state = np.append(self.state, self._last_iou)
         return self._epoch, self.state
         
-    def step(self, action, final_step):
+    def step(self, action, s):
+        final_step = (s == self.max_step)
         x_ratio, y_ratio, width_ratio, height_ratio, done = action
         
         if x_ratio + width_ratio >= 1 or y_ratio + height_ratio >= 1:
-            return self.state, -20, False
+            return self.state, -20, False, 0
         
         x = int(self.last_x + self.region_image[1] * x_ratio)
         y = int(self.last_y + self.region_image[0] * y_ratio)
@@ -109,10 +115,10 @@ class Env(object):
         height = int(self.region_image[0] * height_ratio)
         if width < 1 or height < 1:
             if self._same:
-                if final_step: return self.state, -10, True
-                else: return self.state, -10, False
+                if final_step: return self.state, -10, True, 0
+                else: return self.state, -10, False, 0
             else:
-                return self.state, -1, True
+                return self.state, -1, True, 0
         
         self.region_image = (int(self.region_image[0]*height_ratio),int(self.region_image[1]*width_ratio))
         
@@ -125,29 +131,31 @@ class Env(object):
             reward = -5*(1-iou)#self._last_iou - iou
         self.region_masks.append(region_mask)
         
-        search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
-        self.state = get_state(self.target_iv, search_iv)
-        self.state = np.append(self.state, iou)
-        
         self._last_iou = iou
         self.last_x = x
         self.last_y = y
         
         if self._epoch < 200: thre = 0
-        else: thre = self._epoch * 0.01
+        else: thre = (self._epoch-200) * 0.01
         
         if thre > 0.5: thre = 0.5
         if done < thre or final_step:
             if self._same:
                 if iou >= self._iou_thre:
-                    return self.state, -(1-iou), True
+                    return self.state, -(1-iou), True, iou
                 else:
-                    return self.state, -5 * (1-iou), True
+                    return self.state, -5 * (1-iou), True, iou
             else:
-                return self.state, -0.5, True
+                return self.state, -0.5, True, 0
         
-        if thre == 0: return self.state, reward, iou>=0.5
-        else: return self.state, reward, False
+        
+        search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
+        self.history_state[s*4096:(s+1)*4096] = search_iv
+        self.history_action[s*4:(s+1)*4] = action[:4]
+        self.state = get_state(self.target_iv, self.history_state, self.history_action)
+        if thre == 0: return self.state, reward, iou>=0.5, iou
+        else: 
+            return self.state, reward, False, iou
     
     def gen_render(self):
         with Render() as r:

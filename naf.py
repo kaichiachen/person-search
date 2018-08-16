@@ -60,6 +60,7 @@ np.random.seed(conf.random_seed)
 def main(_):
   model_dir = get_model_dir(conf,
       ['is_train', 'random_seed', 'monitor', 'display', 'log_level'])
+  print(model_dir)
 
   preprocess_conf(conf)
 
