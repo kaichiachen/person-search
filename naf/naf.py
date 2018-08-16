@@ -2,6 +2,7 @@ from logging import getLogger
 logger = getLogger(__name__)
 
 import numpy as np
+import sys
 import tensorflow as tf
 from tensorflow.contrib.framework import get_variables
 
@@ -46,10 +47,16 @@ class NAF(object):
 
     #if monitor:
     #  self.env.monitor.start('/tmp/%s-%s' % (self.stat.env_name, get_timestamp()))
-
-    for self.idx_episode in range(self.max_episodes):
-      eps, state = self.env.reset(self.max_steps)
-      print('episode: ', self.idx_episode)
+    
+    writer = tf.summary.FileWriter("./logs/", sess.graph)
+    index = 0
+    last_epoch = 0
+    self.idx_episode = 0
+    #for self.idx_episode in range(self.max_episodes):
+    while True:
+      epoch, state = self.env.reset(self.max_steps)
+      ep_reward=0
+      index+=1
       for t in range(0, self.max_steps):
         #if display: self.env.render()
 
@@ -59,6 +66,7 @@ class NAF(object):
         # 2. step
         self.prestates.append(state)
         state, reward, terminal, iou = self.env.step(action, t==(self.max_steps-1))
+        ep_reward+=reward
         self.poststates.append(state)
 
         terminal = True if t == self.max_steps - 1 else terminal
@@ -73,6 +81,32 @@ class NAF(object):
         if terminal:
           self.strategy.reset()
           break
+      
+      result = '| done' if terminal else '| ----'
+      sys.stdout.write('\r' + 
+              'Epoch:'+ str(epoch) +
+              ' (%d/%d)' % (index, len(self.env.random_index)) +
+              result +
+              '| Step: %i' % t +
+              '| R: %.2f' % ep_reward +
+              '| IOU: %.2f' % iou
+              )
+      if epoch != last_epoch:
+        index = 0
+        last_epoch = epoch
+      self.idx_episode+=1
+    
+      summary = tf.Summary()
+      reward_value = summary.value.add()
+      reward_value.simple_value = ep_reward
+      reward_value.tag = 'reward'
+      iou_value = summary.value.add()
+      iou_value.simple_value = iou
+      iou_value.tag = 'iou'
+      step_value = summary.value.add()
+      step_value.simple_value = t+1
+      step_value.tag = 'step'
+      writer.add_summary(summary, len(self.env.random_index)*epoch + index)
 
     #if monitor:
     #  self.env.monitor.close()

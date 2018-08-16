@@ -3,6 +3,8 @@ output/models/*
 output/imgs/*
 output/logs/*
 logs/*
+screenlog.0
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -58,9 +58,6 @@ tf.set_random_seed(conf.random_seed)
 np.random.seed(conf.random_seed)
 
 def main(_):
-  model_dir = get_model_dir(conf,
-      ['is_train', 'random_seed', 'monitor', 'display', 'log_level'])
-  print(model_dir)
 
   preprocess_conf(conf)
 
@@ -109,7 +106,7 @@ def main(_):
     target_network.make_soft_update_from(pred_network, conf.tau)
 
     # statistic
-    stat = Statistic(sess, conf.env_name, model_dir, pred_network.variables, conf.update_repeat)
+    stat = Statistic(sess, conf.env_name, './output/models', pred_network.variables, conf.update_repeat)
 
     agent = NAF(sess, env, strategy, pred_network, target_network, stat,
                 conf.discount, conf.batch_size, conf.learning_rate,

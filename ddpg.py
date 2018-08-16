@@ -9,7 +9,7 @@ np.random.seed(1)
 tf.set_random_seed(1)
 
 MAX_EPISODES = 1000
-MAX_EP_STEPS = 5
+MAX_EP_STEPS = 10
 LR_A = 1e-4  # learning rate for actor
 LR_C = 1e-4  # learning rate for critic
 GAMMA = 0.9  # reward discount
@@ -174,8 +174,9 @@ class Memory(object):
         assert self.pointer >= self.capacity, 'Memory has not been fulfilled'
         indices = np.random.choice(self.capacity, size=n)
         return self.data[indices, :]
-    
-sess = tf.Session()
+
+gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)    
+sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
 sess.__enter__()
 
 actor = Actor(sess, ACTION_DIM, ACTION_BOUND[1], LR_A, REPLACE_ITER_A)
@@ -193,7 +194,7 @@ else:
     sess.run(tf.global_variables_initializer())
     
 def train():
-    var = 1  # control exploration
+    var = 0.5  # control exploration
     last_epoch = 0
     
     writer = tf.summary.FileWriter("./logs/", sess.graph)
