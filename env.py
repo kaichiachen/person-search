@@ -47,7 +47,8 @@ class Env(object):
         self._iou_thre = 0.5
         
         self.feature_map_extractor_model = VGG19(weights='imagenet' ,include_top=False)#, include_top=False, input_shape=(800,800,3))
-        #self.feature_map_extractor_model = kerasModel(input=self.feature_map_extractor_model.input, output=self.feature_map_extractor_model.get_layer('fc2').output)
+        print(self.feature_map_extractor_model.get_layer('block5_pool').output)
+        self.fc_model = kerasModel(input=self.feature_map_extractor_model.get_layer('block5_pool').output, output=VGG19(weights='imagenet').get_layer('fc2').output)
         self.feature_map_extractor_model.summary()
         
         self.env_render = self.gen_render()
@@ -94,12 +95,13 @@ class Env(object):
         self.search_image = np.array(Image.open(search_data['image']))
         im = cv2.resize(self.search_image, (224, 224)).astype(np.float32)
         #search_iv = get_image_vector(self.search_image, self.feature_map_extractor_model)
-        self.features = self.feature_map_extractor_model.predict(np.expand_dims(im, axis=0))
-        self.target_iv = get_image_vector(self.target_image, self.feature_map_extractor_model).flatten()
+        self.features = get_image_vector(self.search_image, self.feature_map_extractor_model)
+        fc = self.fc_model.predict(self.features)
+        self.target_iv = self.fc_model.predict(get_image_vector(self.target_image, self.feature_map_extractor_model))
         
         #self.history_state[:4096] = search_iv
         self.history_action[:4] = 0,0,1,1
-        self.state = get_state(self.target_iv, self.features.flatten(), self.history_action)
+        self.state = get_state(self.target_iv, fc, self.history_action)
         
         annotation = search_data['boxes'][np.where(search_data['gt_pids']==1000)[0][0]]
         #annotation = search_data['boxes'][np.where(search_data['gt_pids']==search_index)[0][0]]#.astype(np.int32)
@@ -174,7 +176,8 @@ class Env(object):
         #search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
         x, width = x/self.search_image.shape[1] * 224, width/self.search_image.shape[1]*224
         y, height = y/self.search_image.shape[0] * 224, height/self.search_image.shape[0]*224
-        search_iv = roi(self.sess,self.features, [x,y,width,height]).flatten()
+        search_iv = roi(self.sess,self.features, [x,y,width,height])
+        search_iv = self.fc_model.predict(search_iv)
         #self.history_state[s*4096:(s+1)*4096] = search_iv
         self.history_action[s*4:(s+1)*4] = action[:4]
         self.state = get_state(self.target_iv, search_iv, self.history_action)
