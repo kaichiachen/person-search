@@ -15,6 +15,7 @@ from src.utils import generate_bounding_box_from_annotation
 from src.metrics import follow_iou
 from src.image_helper import mask_image_with_mean_background
 from src.utils import save_img
+from src.features import roi
 
 class Render(object):
     def __enter__(self):
@@ -26,14 +27,15 @@ class Env(object):
     
     action_bound = [0, 1]
     action_dim = 5
-    state_dim = 8212
+    state_dim = 50196
     
     def __init__(self):
 
         #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
         #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         #sess = tf.Session(config=tf.ConfigProto(device_count={'cpu':2}))
-        #KTF.set_session(sess)
+        self.sess = tf.Session()
+        KTF.set_session(self.sess)
         with open('data/pid_map_image_update.txt', 'rb') as f:
             u = pickle._Unpickler(f)
             u.encoding = 'latin1'
@@ -44,8 +46,8 @@ class Env(object):
         self._epoch = 0
         self._iou_thre = 0.5
         
-        self.feature_map_extractor_model = VGG19(weights='imagenet')#, include_top=False, input_shape=(800,800,3))
-        self.feature_map_extractor_model = kerasModel(input=self.feature_map_extractor_model.input, output=self.feature_map_extractor_model.get_layer('fc2').output)
+        self.feature_map_extractor_model = VGG19(weights='imagenet' ,include_top=False)#, include_top=False, input_shape=(800,800,3))
+        #self.feature_map_extractor_model = kerasModel(input=self.feature_map_extractor_model.input, output=self.feature_map_extractor_model.get_layer('fc2').output)
         self.feature_map_extractor_model.summary()
         
         self.env_render = self.gen_render()
@@ -90,13 +92,14 @@ class Env(object):
         search_data = self._data[1000][1]
         #search_data = self._data[search_index][image_index]
         self.search_image = np.array(Image.open(search_data['image']))
-    
-        search_iv = get_image_vector(self.search_image, self.feature_map_extractor_model)
-        self.target_iv = get_image_vector(self.target_image, self.feature_map_extractor_model)
+        im = cv2.resize(self.search_image, (224, 224)).astype(np.float32)
+        #search_iv = get_image_vector(self.search_image, self.feature_map_extractor_model)
+        self.features = self.feature_map_extractor_model.predict(np.expand_dims(im, axis=0))
+        self.target_iv = get_image_vector(self.target_image, self.feature_map_extractor_model).flatten()
         
         #self.history_state[:4096] = search_iv
         self.history_action[:4] = 0,0,1,1
-        self.state = get_state(self.target_iv, search_iv, self.history_action)
+        self.state = get_state(self.target_iv, self.features.flatten(), self.history_action)
         
         annotation = search_data['boxes'][np.where(search_data['gt_pids']==1000)[0][0]]
         #annotation = search_data['boxes'][np.where(search_data['gt_pids']==search_index)[0][0]]#.astype(np.int32)
@@ -168,7 +171,10 @@ class Env(object):
                 return self.state, 0.5, True, 0
         
         
-        search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
+        #search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
+        x, width = x/self.search_image.shape[1] * 224, width/self.search_image.shape[1]*224
+        y, height = y/self.search_image.shape[0] * 224, height/self.search_image.shape[0]*224
+        search_iv = roi(self.sess,self.features, [x,y,width,height]).flatten()
         #self.history_state[s*4096:(s+1)*4096] = search_iv
         self.history_action[s*4:(s+1)*4] = action[:4]
         self.state = get_state(self.target_iv, search_iv, self.history_action)

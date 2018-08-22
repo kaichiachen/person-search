@@ -26,7 +26,7 @@ scale_reduction_deeper_feature = 32
 factor_x_input = float(1)
 factor_y_input = float(1)
 
-def roi(features, box):
+def roi(sess, features, box):
     if features.shape != (1,7,7,512):
         return np.zeros((1,7,7,512))
     pooling_size = 7
@@ -38,7 +38,7 @@ def roi(features, box):
     roi_pooling = RoiPoolingConv(pooling_size, roi_num)
     roi_pooling.build([[1,7,7,512]])
     m = roi_pooling.call([features,roi_anno])
-    sess = tf.Session()
+    #sess = tf.Session()
     Y = sess.run(m)
     return Y[0]
 
