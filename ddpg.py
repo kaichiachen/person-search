@@ -9,10 +9,10 @@ np.random.seed(1)
 tf.set_random_seed(1)
 
 MAX_EPISODES = 1000
-MAX_EP_STEPS = 10
+MAX_EP_STEPS = 5
 LR_A = 1e-4  # learning rate for actor
 LR_C = 1e-4  # learning rate for critic
-GAMMA = 0.9  # reward discount
+GAMMA = 1.1  # reward discount
 REPLACE_ITER_A = 1100
 REPLACE_ITER_C = 1000
 MEMORY_CAPACITY = 5000
@@ -60,13 +60,13 @@ class Actor(object):
             net = tf.layers.dense(s, 2048, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l1',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 512, activation=tf.nn.relu6,
+            net = tf.layers.dense(net, 1024, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l2',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 200, activation=tf.nn.relu6,
+            net = tf.layers.dense(net, 1024, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l3',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 10, activation=tf.nn.relu,
+            net = tf.layers.dense(net, 1024, activation=tf.nn.relu,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l4',
                                   trainable=trainable)
             with tf.variable_scope('a'):
@@ -138,13 +138,13 @@ class Critic(object):
                 w1_a = tf.get_variable('w1_a', [self.a_dim, n_l1], initializer=init_w, trainable=trainable)
                 b1 = tf.get_variable('b1', [1, n_l1], initializer=init_b, trainable=trainable)
                 net = tf.nn.relu6(tf.matmul(s, w1_s) + tf.matmul(a, w1_a) + b1)
-            net = tf.layers.dense(net, 512, activation=tf.nn.relu6,
+            net = tf.layers.dense(net, 1024, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l2',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 200, activation=tf.nn.relu6,
+            net = tf.layers.dense(net, 1024, activation=tf.nn.relu6,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l3',
                                   trainable=trainable)
-            net = tf.layers.dense(net, 10, activation=tf.nn.relu,
+            net = tf.layers.dense(net, 1024, activation=tf.nn.relu,
                                   kernel_initializer=init_w, bias_initializer=init_b, name='l4',
                                   trainable=trainable)
             with tf.variable_scope('q'):
@@ -175,8 +175,9 @@ class Memory(object):
         indices = np.random.choice(self.capacity, size=n)
         return self.data[indices, :]
 
-gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)    
-sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+#gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)    
+#sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+sess = tf.Session()
 sess.__enter__()
 
 actor = Actor(sess, ACTION_DIM, ACTION_BOUND[1], LR_A, REPLACE_ITER_A)
@@ -197,7 +198,10 @@ def train():
     var = 0.5  # control exploration
     last_epoch = 0
     
-    writer = tf.summary.FileWriter("./logs/", sess.graph)
+    import shutil
+    shutil.rmtree('./logs/ddpg')
+    os.mkdir('./logs/ddpg')
+    writer = tf.summary.FileWriter("./logs/ddpg", sess.graph)
     index = 0
     while True:
         index += 1
@@ -205,12 +209,13 @@ def train():
 #         if epoch > MAX_EPISODES:
 #             break
         ep_reward = 0
-
+        actions = [[] for _ in range(MAX_EP_STEPS)]
         for t in range(MAX_EP_STEPS):
 
             # Added exploration noise
             a = actor.choose_action(s)
             a = np.clip(np.random.normal(a, var), *ACTION_BOUND)    # add randomness to action selection for exploration
+            actions[t] = list(a[:4])
             s_, r, done, iou = env.step(a, t+1)
             
             
@@ -252,10 +257,17 @@ def train():
             last_epoch = epoch
             if epoch % 10 == 0:
                 ckpt_path = os.path.join(path, 'DDPG_epoch_%d.ckpt' % epoch)
-                save_path = saver.save(sess, ckpt_path, write_meta_graph=False)
+                save_path = saver.save(sess, ckpt_path, write_meta_graph=True)
                 print("\nSave Model %s\n" % save_path)
                 
         summary = tf.Summary()
+        for i, action in enumerate(actions):
+            if len(action) == 0:
+                break
+            for ii, a in enumerate(action):
+                action_value = summary.value.add()
+                action_value.simple_value = a
+                action_value.tag = '%d_%d_action' % (i, ii)
         reward_value = summary.value.add()
         reward_value.simple_value = ep_reward
         reward_value.tag = 'reward'

@@ -26,14 +26,14 @@ class Env(object):
     
     action_bound = [0, 1]
     action_dim = 5
-    state_dim = 45096
+    state_dim = 8212
     
     def __init__(self):
 
-        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
-        sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
+        #gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.5)
+        #sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         #sess = tf.Session(config=tf.ConfigProto(device_count={'cpu':2}))
-        KTF.set_session(sess)
+        #KTF.set_session(sess)
         with open('data/pid_map_image_update.txt', 'rb') as f:
             u = pickle._Unpickler(f)
             u.encoding = 'latin1'
@@ -60,6 +60,7 @@ class Env(object):
             np.random.shuffle(self.random_index)
             self.now_index = 0
             self._epoch += 1
+            np.random.shuffle(self.random_index)
             
         now_index = self.random_index[self.now_index]    
             
@@ -76,25 +77,29 @@ class Env(object):
         while image_index >= len(self._data[now_index]):
             image_index = int(random.random()*len(self._data[now_index]))
 
-        target_data = self._data[now_index][image_index]
+        target_data = self._data[1000][0]
+        #target_data = self._data[now_index][image_index]
         target_image = np.array(Image.open(target_data['image']))
-        bbox = target_data['boxes'][np.where(target_data['gt_pids']==now_index)[0][0]]
+        bbox = target_data['boxes'][np.where(target_data['gt_pids']==1000)[0][0]]
+        #bbox = target_data['boxes'][np.where(target_data['gt_pids']==now_index)[0][0]]
         self.target_image = target_image[bbox[1]:bbox[3],bbox[0]:bbox[2]]
 
         image_index = int(random.random()*len(self._data[search_index]))
         while image_index >= len(self._data[search_index]):
             image_index = int(random.random()*len(self._data[search_index]))
-        search_data = self._data[search_index][image_index]
+        search_data = self._data[1000][1]
+        #search_data = self._data[search_index][image_index]
         self.search_image = np.array(Image.open(search_data['image']))
     
         search_iv = get_image_vector(self.search_image, self.feature_map_extractor_model)
         self.target_iv = get_image_vector(self.target_image, self.feature_map_extractor_model)
         
-        self.history_state[:4096] = search_iv
+        #self.history_state[:4096] = search_iv
         self.history_action[:4] = 0,0,1,1
-        self.state = get_state(self.target_iv, self.history_state, self.history_action)
+        self.state = get_state(self.target_iv, search_iv, self.history_action)
         
-        annotation = search_data['boxes'][np.where(search_data['gt_pids']==search_index)[0][0]]#.astype(np.int32)
+        annotation = search_data['boxes'][np.where(search_data['gt_pids']==1000)[0][0]]
+        #annotation = search_data['boxes'][np.where(search_data['gt_pids']==search_index)[0][0]]#.astype(np.int32)
         self.gt_mask = generate_bounding_box_from_annotation(annotation, self.search_image.shape)
         
         if self._same:
@@ -128,9 +133,9 @@ class Env(object):
         if width < 1 or height < 1:
             if self._same:
                 if final_step: return self.state, -10, True, 0
-                else: return self.state, -10, False, 0
+                else: return self.state, -1, False, 0
             else:
-                return self.state, -1, True, 0
+                return self.state, 0.5, True, 0
         
         self.region_image = (int(self.region_image[0]*height_ratio),int(self.region_image[1]*width_ratio))
         
@@ -138,9 +143,11 @@ class Env(object):
         region_mask[y:y+height,x:x+width] = 1
         iou = follow_iou(self.gt_mask, region_mask)
         if iou >= self._last_iou:
-            reward = -0.5*(1-iou)#iou - self._last_iou
+            reward = 0#iou - self._last_iou
+            if iou > 0.5:
+                reward = 1
         else:
-            reward = -(1-iou)#self._last_iou - iou
+            reward = 0#self._last_iou - iou
         self.region_masks.append(region_mask)
         
         self._last_iou = iou
@@ -154,17 +161,17 @@ class Env(object):
         if done < thre or final_step:
             if self._same:
                 if iou >= self._iou_thre:
-                    return self.state, -0.1*(1-iou), True, iou
+                    return self.state, 1, True, iou
                 else:
-                    return self.state, -(1-iou), True, iou
+                    return self.state, iou - self._iou_thre, True, iou
             else:
-                return self.state, -0.5, True, 0
+                return self.state, 0.5, True, 0
         
         
         search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
-        self.history_state[s*4096:(s+1)*4096] = search_iv
+        #self.history_state[s*4096:(s+1)*4096] = search_iv
         self.history_action[s*4:(s+1)*4] = action[:4]
-        self.state = get_state(self.target_iv, self.history_state, self.history_action)
+        self.state = get_state(self.target_iv, search_iv, self.history_action)
         if thre == 0: return self.state, reward, iou>=0.5, iou
         else: 
             return self.state, reward, False, iou

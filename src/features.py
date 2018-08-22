@@ -1,17 +1,20 @@
 import cv2, numpy as np
 import math
-import numpy, scipy
+import scipy
 from scipy import interpolate
 import scipy.ndimage
 import time
+import tensorflow as tf
 from keras.models import Sequential
 from keras.layers.core import Flatten, Dense, Dropout
 from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
 from keras.optimizers import SGD
+from keras.layers import Input
 from keras import backend as K
 from src.reinforcement import *
 from src.metrics import *
 from src.utils import *
+from src.RoiPoolingConv import RoiPoolingConv
 
 # the feature size is of 7x7xp, being p the number of channels
 feature_size = 7
@@ -23,6 +26,21 @@ scale_reduction_deeper_feature = 32
 factor_x_input = float(1)
 factor_y_input = float(1)
 
+def roi(features, box):
+    if features.shape != (1,7,7,512):
+        return np.zeros((1,7,7,512))
+    pooling_size = 7
+    roi_num = 1
+    roi_anno = np.array(box).reshape(1,1,-1)
+    in_img = Input(shape=(None, None, 512))
+    in_roi = Input(shape=(roi_num, 4))
+    roi_anno = roi_anno / 224 * pooling_size
+    roi_pooling = RoiPoolingConv(pooling_size, roi_num)
+    roi_pooling.build([[1,7,7,512]])
+    m = roi_pooling.call([features,roi_anno])
+    sess = tf.Session()
+    Y = sess.run(m)
+    return Y[0]
 
 # Interpolation of 2d features for a single channel of a feature map
 def interpolate_2d_features(features):
