@@ -188,7 +188,7 @@ class Env(object):
         #search_iv = get_image_vector(self.search_image[y:y+height,x:x+width], self.feature_map_extractor_model)
         x, width = x/self.search_image.shape[1] * 224, width/self.search_image.shape[1]*224
         y, height = y/self.search_image.shape[0] * 224, height/self.search_image.shape[0]*224
-        search_iv = roi(self.sess,self.features, [x,y,width,height])
+        search_iv = roi(self.features, [x,y,width,height])
         search_iv = self.fc_model.predict(search_iv.flatten().reshape(1,-1))[0]
         #self.history_state[s*4096:(s+1)*4096] = search_iv
         self.history_action[s*4:(s+1)*4] = action[:4]

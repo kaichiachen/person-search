@@ -14,7 +14,7 @@ from keras import backend as K
 from src.reinforcement import *
 from src.metrics import *
 from src.utils import *
-from src.RoiPoolingConv import RoiPoolingConv
+from src.RoiPoolingConv import *
 
 # the feature size is of 7x7xp, being p the number of channels
 feature_size = 7
@@ -26,21 +26,17 @@ scale_reduction_deeper_feature = 32
 factor_x_input = float(1)
 factor_y_input = float(1)
 
-def roi(sess, features, box):
+def roi(features, box):
     if features.shape != (1,7,7,512):
         return np.zeros((1,7,7,512))
-    pooling_size = 7
-    roi_num = 1
+    pooling_size=7
+    roi_num=1
     roi_anno = np.array(box).reshape(1,1,-1)
     in_img = Input(shape=(None, None, 512))
     in_roi = Input(shape=(roi_num, 4))
     roi_anno = roi_anno / 224 * pooling_size
-    roi_pooling = RoiPoolingConv(pooling_size, roi_num)
-    roi_pooling.build([[1,7,7,512]])
-    m = roi_pooling.call([features,roi_anno])
-    #sess = tf.Session()
-    Y = sess.run(m)
-    return Y[0]
+    m = get_roi([features,roi_anno])
+    return m[0]
 
 # Interpolation of 2d features for a single channel of a feature map
 def interpolate_2d_features(features):
@@ -272,54 +268,66 @@ def obtain_compiled_vgg_16(vgg_weights_path):
     model.compile(optimizer=sgd, loss='categorical_crossentropy')
     return model
 
+def get_roi(x, mask=None):
+    nb_channels = 512
+    pool_size=7
+    num_rois = 1
+    assert (len(x) == 2)
 
-def vgg_16(weights_path=None):
-    model = Sequential()
-    model.add(ZeroPadding2D((1, 1), input_shape=(3, 224, 224)))
-    model.add(Convolution2D(64, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(64, (3, 3), activation='relu'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2), data_format="channels_first"))
+    img = x[0]
+    rois = x[1]
 
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(128, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(128, (3, 3), activation='relu'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2), data_format="channels_first"))
+    input_shape = img.shape
 
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(256, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(256, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(256, (3, 3), activation='relu'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2), data_format="channels_first"))
+    outputs = []
 
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(512, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(512, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(512, (3, 3), activation='relu'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2), data_format="channels_first"))
+    for roi_idx in range(num_rois):
 
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(512, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(512, (3, 3), activation='relu'))
-    model.add(ZeroPadding2D((1, 1)))
-    model.add(Convolution2D(512, (3, 3), activation='relu'))
-    model.add(MaxPooling2D((2, 2), strides=(2, 2), data_format="channels_first"))
+        x = rois[0, roi_idx, 0]
+        y = rois[0, roi_idx, 1]
+        w = rois[0, roi_idx, 2]
+        h = rois[0, roi_idx, 3]
 
-    model.add(Flatten())
-    model.add(Dense(4096, activation='relu'))
-    model.add(Dropout(0.5))
-    model.add(Dense(4096, activation='relu'))
-    model.add(Dropout(0.5))
-    model.add(Dense(1000, activation='softmax'))
+        row_length = w / float(pool_size)
+        col_length = h / float(pool_size)
 
-    if weights_path:
-        model.load_weights(weights_path, by_name=True)
+        num_pool_regions = pool_size
 
-    return model
+        for jy in range(num_pool_regions):
+            for ix in range(num_pool_regions):
+                x1 = x + ix * row_length
+                x2 = x1 + row_length
+                y1 = y + jy * col_length
+                y2 = y1 + col_length
+
+                x1 = int(x1)
+                x2 = int(x2)
+                y1 = int(y1)
+                y2 = int(y2)
+
+                if y2 == y1:
+                    if y2 == pool_size-1:
+                        y1 -= 1
+                    elif y2 == 0:
+                        y2 += 1
+                    else:
+                        y2 += 1
+                if x2 == x1:
+                    if x2 == pool_size-1:
+                        x1 -= 1
+                    elif y2 == 0:
+                        x2 += 1
+                    else:
+                        x2 += 1
+                new_shape = [input_shape[0], y2 - y1,
+                            x2 - x1, input_shape[3]]
+                x_crop = img[:, y1:y2, x1:x2, :]
+                xm = np.reshape(x_crop, new_shape)
+                pooled_val = np.max(x_crop, axis=(1, 2))
+                outputs.append(pooled_val)
+
+    final_output = np.concatenate(outputs, axis=0)
+    final_output = np.reshape(final_output, (1, num_rois, pool_size, pool_size, nb_channels))
+
+    return final_output
 
