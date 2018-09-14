@@ -9,12 +9,13 @@ from keras.models import Sequential
 from keras.layers.core import Flatten, Dense, Dropout
 from keras.layers.convolutional import Convolution2D, MaxPooling2D, ZeroPadding2D
 from keras.optimizers import SGD
-from keras.layers import Input
+from keras.layers import Input, merge
 from keras import backend as K
+from keras.models import Model as kerasModel
 from src.reinforcement import *
 from src.metrics import *
 from src.utils import *
-from src.RoiPoolingConv import *
+from src.RoiPoolingConv import RoiPoolingConv
 
 # the feature size is of 7x7xp, being p the number of channels
 feature_size = 7
@@ -37,6 +38,56 @@ def roi(features, box):
     roi_anno = roi_anno / 224 * pooling_size
     m = get_roi([features,roi_anno])
     return m[0]
+
+def get_roi_model(vgg_model):
+    in_img = Input(shape=(None, None, 512))
+    in_roi = Input(shape=(1, 4))
+    
+    #roi_model = Sequential()
+    out_roi_pool = RoiPoolingConv(7, 1)([in_img, in_roi])
+    model = kerasModel([in_img, in_roi], out_roi_pool)
+#     net = merge([in_img, features],mode=cross_input_asym,output_shape=cross_input_shape)(out_roi_pool, features)
+    net = Flatten()(out_roi_pool)
+    net = Dense(4096, kernel_initializer=lambda shape:K.random_normal(shape), input_shape=(25088,))(net)
+    net = Activation('relu')(net)
+    net = Dropout(0.5)(net)
+    net = Dense(4096, kernel_initializer=lambda shape:K.random_normal(shape))(net)
+    net = Activation('relu')(net)
+    net = Dropout(0.5)(net)
+    net = Dense(1000, kernel_initializer=lambda shape:K.random_normal(shape))(net)
+    net = Activation('softmax')(net)
+    roi_model = kerasModel(inputs=model.input, outputs=net)
+    roi_model.set_weights(vgg_model.get_weights()[-6:])
+    return roi_model
+
+def cross_input_asym(X):
+    tensor_left = X[0]
+    tensor_right = X[1]
+    x_length = K.int_shape(tensor_left)[1]
+    y_length = K.int_shape(tensor_left)[2]
+    cross_y = []
+    cross_x = []
+    tensor_left_padding = K.spatial_2d_padding(tensor_left,padding=(2,2))
+    tensor_right_padding = K.spatial_2d_padding(tensor_right,padding=(2,2))
+    for i_x in range(2, x_length + 2):
+        for i_y in range(2, y_length + 2):
+            cross_y.append(tensor_left_padding[:,i_x-2:i_x+3,i_y-2:i_y+3,:] 
+                         - concat_iterat(tensor_right_padding[:,i_x,i_y,:]))
+        cross_x.append(K.concatenate(cross_y,axis=2))
+        cross_y = []
+    cross_out = K.concatenate(cross_x,axis=1)
+    return K.abs(cross_out)
+
+def cross_input_shape(input_shapes):
+    input_shape = input_shapes[0]
+    return (input_shape[0],input_shape[1] * 5,input_shape[2] * 5,input_shape[3])
+
+def get_merge_model():
+    in_img = Input(shape=(None, None, 512))
+    in_roi = Input(shape=(1, 4))
+    
+    out_roi_pool = RoiPoolingConv(7, 1)([in_img, in_roi])
+    model = kerasModel([in_img, in_roi], out_roi_pool)
 
 # Interpolation of 2d features for a single channel of a feature map
 def interpolate_2d_features(features):
